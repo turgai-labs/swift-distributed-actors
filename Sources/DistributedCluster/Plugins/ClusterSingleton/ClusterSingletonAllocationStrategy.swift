@@ -24,14 +24,31 @@ public protocol ClusterSingletonAllocationStrategy {
 
     /// The currently allocated `node` for the singleton.
     var node: Cluster.Node? { get async }
+
+    /// Receives the nodes that host the singleton, meaning they called
+    /// `ClusterSystem.singleton.host(type:name:settings:makeInstance:)` for it.
+    ///
+    /// Nodes that only proxy the singleton, or don't run the plugin at all, such as a
+    /// cluster daemon, can't run it, so a strategy must not choose them once hosts are known.
+    /// A node that's down is no longer among `hosts`.
+    ///
+    /// - Returns: The current `node` after taking `hosts` into account.
+    func onHostsChange(_ hosts: Set<Cluster.Node>) async -> Cluster.Node?
 }
 
 // ==== ----------------------------------------------------------------------------------------------------------------
 // MARK: ClusterSingletonAllocationStrategy implementations
 
 /// An `AllocationStrategy` in which selection is based on cluster leadership.
+///
+/// The singleton runs on the cluster leader when the leader hosts it. When it doesn't,
+/// for example because the leader is a cluster daemon or only proxies the singleton,
+/// the singleton runs on the lowest-address node that hosts it instead, so it always
+/// has somewhere to run.
 public final class ClusterSingletonAllocationByLeadership: ClusterSingletonAllocationStrategy {
-    var _node: Cluster.Node?
+    var leader: Cluster.Node?
+    /// Nodes known to host the singleton; empty until they're discovered.
+    var hosts: Set<Cluster.Node> = []
 
     public init(settings: ClusterSingletonSettings, actorSystem: ClusterSystem) {
         // not used...
@@ -40,19 +57,31 @@ public final class ClusterSingletonAllocationByLeadership: ClusterSingletonAlloc
     public func onClusterEvent(_ clusterEvent: Cluster.Event) async -> Cluster.Node? {
         switch clusterEvent {
         case .leadershipChange(let change):
-            self._node = change.newLeader?.node
+            self.leader = change.newLeader?.node
         case .snapshot(let membership):
-            self._node = membership.leader?.node
+            self.leader = membership.leader?.node
         default:
             ()  // ignore other events
         }
-        return self._node
+        return self.allocatedNode
+    }
+
+    public func onHostsChange(_ hosts: Set<Cluster.Node>) async -> Cluster.Node? {
+        self.hosts = hosts
+        return self.allocatedNode
     }
 
     public var node: Cluster.Node? {
         get async {
-            self._node
+            self.allocatedNode
         }
+    }
+
+    /// The leader, unless hosting nodes are known and the leader isn't one of them.
+    private var allocatedNode: Cluster.Node? {
+        guard let leader else { return nil }
+        guard !self.hosts.isEmpty, !self.hosts.contains(leader) else { return leader }
+        return self.hosts.min()
     }
 }
 
