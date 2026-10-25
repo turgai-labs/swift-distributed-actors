@@ -81,7 +81,8 @@ final class ResolveTypeTests: ClusteredActorSystemsXCTestCase {
             targetIdentifier: "target",
             recipient: .protocolStub,
             genericSubstitutions: [],
-            arguments: []
+            arguments: [],
+            taskLocals: [:]
         )
         let manifest = try system.serialization.serialize(made).manifest
         let json = #"{"callID":"\#(made.callID.uuidString)","targetIdentifier":"target","genericSubstitutions":[],"arguments":[]}"#

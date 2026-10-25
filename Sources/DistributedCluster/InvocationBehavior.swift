@@ -28,19 +28,38 @@ public struct InvocationMessage: Sendable, Codable, CustomStringConvertible {
     let recipient: Recipient?
     let genericSubstitutions: [String]
     let arguments: [Data]
+    /// The caller's values of the task-locals declared to travel, by name.
+    let taskLocals: [String: Data]
 
     init(
         callID: ClusterSystem.CallID,
         targetIdentifier: String,
         recipient: Recipient,
         genericSubstitutions: [String],
-        arguments: [Data]
+        arguments: [Data],
+        taskLocals: [String: Data]
     ) {
         self.callID = callID
         self.targetIdentifier = targetIdentifier
         self.recipient = recipient
         self.genericSubstitutions = genericSubstitutions
         self.arguments = arguments
+        self.taskLocals = taskLocals
+    }
+
+    enum CodingKeys: CodingKey {
+        case callID, targetIdentifier, recipient, genericSubstitutions, arguments, taskLocals
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.callID = try container.decode(ClusterSystem.CallID.self, forKey: .callID)
+        self.targetIdentifier = try container.decode(String.self, forKey: .targetIdentifier)
+        self.recipient = try container.decodeIfPresent(Recipient.self, forKey: .recipient)
+        self.genericSubstitutions = try container.decode([String].self, forKey: .genericSubstitutions)
+        self.arguments = try container.decode([Data].self, forKey: .arguments)
+        // Absent from a node that doesn't send it yet.
+        self.taskLocals = try container.decodeIfPresent([String: Data].self, forKey: .taskLocals) ?? [:]
     }
 
     /// What a call was made through, which decides which actors may run it.
