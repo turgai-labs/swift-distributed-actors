@@ -1455,6 +1455,7 @@ extension ClusterSystem {
         invocation: InvocationEncoder
     ) async throws -> Any
     where Act: DistributedActor, Act.ID == ActorID {
+        try await self.filterIncomingCall(to: actor, target: target)
         var directDecoder = ClusterInvocationDecoder(system: self, invocation: invocation)
         let directReturn = LocalCallResult()
         try await executeDistributedTarget(
@@ -1467,6 +1468,14 @@ extension ClusterSystem {
             throw RemoteCallError(.invalidReply(UUID()), on: actor.id, target: target)
         }
         return try result.get()
+    }
+}
+
+extension ClusterSystem {
+    /// Refuses a call to `actor` that the incoming call filter, when one is set, refuses.
+    private func filterIncomingCall(to actor: any DistributedActor, target: RemoteCallTarget) async throws {
+        guard let filter = self.settings.remoteCall.incomingCallFilter else { return }
+        try await filter(actor, target)
     }
 }
 
@@ -1505,6 +1514,7 @@ extension ClusterSystem {
                     throw DeadLetterError(recipient: recipient)
                 }
 
+                try await self.filterIncomingCall(to: actor, target: target)
                 try await executeDistributedTarget(
                     on: actor,
                     target: target,

@@ -517,6 +517,22 @@ extension ClusterSystemSettings {
 
         public var codableErrorAllowance: CodableErrorAllowanceSettings = .all
 
+        /// Decides, on the node an actor lives on, whether a call to it may run, just before its target
+        /// runs: a call that arrived from another node, or a local call made through a proxy, such as an
+        /// interceptor's or a resolved stub's.
+        ///
+        /// It's asked about every such call, including those the cluster makes to its own actors, such
+        /// as membership's, so a filter lets through the calls it doesn't decide.
+        ///
+        /// Throwing refuses the call: its target doesn't run, and the caller gets the error, as if the
+        /// target had thrown it. A remote caller gets it as any thrown error, subject to
+        /// ``codableErrorAllowance``. The filter runs in the task the target would run in, so it sees
+        /// the task-locals the target would see.
+        ///
+        /// A call made directly on a local actor's own instance doesn't go through the actor system, so
+        /// it isn't filtered.
+        public var incomingCallFilter: (@Sendable (_ actor: any DistributedActor, _ target: RemoteCallTarget) async throws -> Void)?
+
         public struct CodableErrorAllowanceSettings {
             internal enum CodableErrorAllowance {
                 case none
