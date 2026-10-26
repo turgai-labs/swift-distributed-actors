@@ -58,6 +58,30 @@ final class TaskLocalPropagationClusteredTests: ClusteredActorSystemsXCTestCase 
         XCTAssertEqual(seen, ["ann", nil])
     }
 
+    func test_incomingCallFilter_seesTheTaskLocalsTheCallCameWith() async throws {
+        let refused = TaskLocalRefusal()
+        let (first, second) = await self.setUpPair { settings in
+            self.declaring(&settings)
+            settings.serialization.registerInbound(TaskLocalRefusal.self)
+            // Refuses a call made for "bob", by the task-local it arrived with.
+            settings.remoteCall.incomingCallFilter = { _, _ in
+                if Traveling.request == "bob" { throw refused }
+            }
+        }
+        try await self.joinNodes(node: first, with: second)
+        let reader = TaskLocalReader(actorSystem: second)
+        let remote = try TaskLocalReader.resolve(id: reader.id, using: first)
+
+        let seen = try await Traveling.$request.withValue("ann") { try await remote.read() }
+        XCTAssertEqual(seen, ["ann", nil])
+        let error = try await shouldThrow {
+            _ = try await Traveling.$request.withValue("bob") { try await remote.read() }
+        }
+        guard error is TaskLocalRefusal else {
+            throw TestError("Expected the filter's refusal, got: \(error)")
+        }
+    }
+
     func test_remoteCall_madeFromARemoteCall_carriesTheTaskLocalsOn() async throws {
         let (first, second) = await self.setUpPair(self.declaring)
         try await self.joinNodes(node: first, with: second)
@@ -129,3 +153,5 @@ final class TaskLocalPropagationClusteredTests: ClusteredActorSystemsXCTestCase 
         XCTAssertEqual(decoded.targetIdentifier, "target")
     }
 }
+
+private struct TaskLocalRefusal: Error, Codable {}
