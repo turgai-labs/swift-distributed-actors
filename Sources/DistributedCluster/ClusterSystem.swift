@@ -1138,11 +1138,14 @@ extension ClusterSystem {
             preconditionFailure("Attempted to release well-known ActorID, but ID was not well known: \(id.fullDescription)")
         }
 
-        self.namingLock.withLockVoid {
+        // Taken out under the lock, but let go of after it: when this was the last reference, the
+        // actor's deinit resigns its ID, which takes the lock again.
+        let released = self.namingLock.withLock {
             log.debug("Released well-known ActorID explicitly: \(id), it is expected to resignID soon")  // TODO: add checking that we indeed have resigned the ID (the actor has terminated), or we can log a warning if it has not.
 
-            _ = self._managedWellKnownDistributedActors.removeValue(forKey: wellKnownName)
+            return self._managedWellKnownDistributedActors.removeValue(forKey: wellKnownName)
         }
+        withExtendedLifetime(released) {}
     }
 }
 
